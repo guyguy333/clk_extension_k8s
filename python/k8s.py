@@ -207,7 +207,7 @@ def kubectl(force):
         LOGGER.info("Could not find kubectl")
     if which("kubectl"):
         found_kubectl_version = re.match('Client Version: .+ GitVersion:"(v[0-9.]+)"',
-                                         check_output(['kubectl', 'version'])).group(1)
+                                         check_output(['kubectl', 'version', '--client=true'])).group(1)
     if not force and found_kubectl_version != kubectl_version:
         force = True
         LOGGER.info(
@@ -226,7 +226,6 @@ def _all(force):
     ctx.invoke(kubectl, force=force)
     ctx.invoke(helm, force=force)
     ctx.invoke(tilt, force=force)
-    # ctx.invoke(k3d, force=force)
     ctx.invoke(kind, force=force)
 
 
@@ -285,8 +284,14 @@ def install_ingress():
     config.kubectl.call(['apply', '-f',
         'https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/provider/kind/deploy.yaml'
     ])
-    config.kubectl.call(['wait', '--namespace', 'ingress-nginx', '--for=condition=ready', 'pod',
-          '--selector=app.kubernetes.io/component=controller', '--timeout=120s'])
+    success = False
+    while not success:
+        try:
+            config.kubectl.call(['wait', '--namespace', 'ingress-nginx', '--for=condition=ready', 'pod',
+              '--selector=app.kubernetes.io/component=controller', '--timeout=120s'])
+            success = True
+        except subprocess.CalledProcessError:
+            time.sleep(5)
 
 
 @k8s.command(flowdepends=["k8s.install-ingress"])
@@ -365,13 +370,9 @@ def flow():
 
 
 @k8s.command()
-@argument('target', type=click.Choice(['cluster', 'registry', 'all']), default='all', help="What should removed")
-def remove(target):
+def remove():
     """Remove the k8s cluster"""
-    if target in ['all', 'cluster']:
-        call(['k3d', 'cluster', 'delete'])
-    if target in ['all', 'registry']:
-        call(['k3d', 'registry', 'delete', 'k3d-registry.localhost'])
+    call(['kind', 'delete', 'cluster'])
 
 
 @k8s.command()
