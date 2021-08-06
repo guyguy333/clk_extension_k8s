@@ -319,7 +319,7 @@ def install_ingress():
         try:
             config.kubectl.call([
                 'wait', '--namespace', 'ingress-nginx', '--for=condition=ready', 'pod',
-                '--selector=app.kubernetes.io/component=controller', '--timeout=120s'
+                '--selector=app.kubernetes.io/component=controller', '--timeout=180s'
             ])
             success = True
         except subprocess.CalledProcessError:
