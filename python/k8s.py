@@ -378,20 +378,26 @@ def add_domain(domain, ip):
     coredns_conf = config.kubectl.output(['get', 'cm', 'coredns', '-n', 'kube-system', '-o', 'yaml'])
     coredns_conf = yaml.load(coredns_conf, Loader=yaml.FullLoader)
     top_level_domain = domain.split('.')[-1]
-    data = '''
+    update = False
+    if f'hosts custom.hosts {top_level_domain}' not in coredns_conf['data']['Corefile']:
+        data = '''
     hosts custom.hosts %s {
-        # new hosts here
         fallthrough
     }
-'''
-    data = data % top_level_domain
-    if not re.search('hosts custom.hosts', coredns_conf['data']['Corefile']):
+        '''
+        data = data % top_level_domain
         last_bracket_index = coredns_conf['data']['Corefile'].rindex('}')
-        coredns_conf['data']['Corefile'] = coredns_conf['data']['Corefile'][0:last_bracket_index] + data + '\n}'
-    if re.search('# new hosts here', coredns_conf['data']['Corefile']):
-        data = f'{ip} {domain}'
-        coredns_conf['data']['Corefile'] = re.sub(r'(# new hosts here)', f'\\1\n{data}\n',
-                                                  coredns_conf['data']['Corefile'])
+        coredns_conf['data']['Corefile'] = coredns_conf['data']['Corefile'][0:last_bracket_index] + data + '\n}\n'
+        update = True
+    data = f'{ip} {domain}'
+    header, hosts, footer = re.match(
+        r'^(.+hosts custom.hosts ' + top_level_domain + r' \{\n)([^}]*?\n?)(\s+fallthrough\s+\}.+)$',
+        coredns_conf['data']['Corefile'], re.DOTALL).groups()
+    if f'{data}\n' not in hosts:
+        update = True
+        coredns_conf['data']['Corefile'] = header + hosts + f'        {data}\n' + footer
+
+    if update:
         with temporary_file() as f:
             f.write(yaml.dump(coredns_conf).encode('utf8'))
             f.close()
